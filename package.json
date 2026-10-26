@@ -7,11 +7,11 @@
     "start": "node index.js"
   },
   "dependencies": {
-  "@discordjs/voice": "^0.17.0",
-  "@distube/spotify": "^2.0.1",
-  "discord.js": "^14.14.0",
-  "distube": "5.0.7",
-  "dotenv": "^16.4.5",
-  "express": "^4.21.2"
+    "@discordjs/voice": "^0.17.0",
+    "@distube/spotify": "^2.0.1",
+    "discord.js": "^14.14.0",
+    "distube": "5.0.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
   }
 }
