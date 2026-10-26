@@ -69,34 +69,30 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // Sprawdź, czy kanał bota jest pusty
-    const botMember = guild.members.me;
-    const botChannel = botMember?.voice.channel;
+    client.on("voiceStateUpdate", async (oldState, newState) => {
+        const guild = newState.guild;
 
-    if (botChannel) {
-        const humanMembers = botChannel.members.filter(
-            (m) => !m.user.bot
+        const botChannel = guild.members.me?.voice.channel;
+        if (!botChannel) return;
+
+        const humans = botChannel.members.filter(m => !m.user.bot);
+
+        if (humans.size > 0) return;
+
+        setTimeout(() => {
+            const currentChannel = guild.members.me?.voice.channel;
+            if (!currentChannel || currentChannel.id !== botChannel.id) return;
+
+            const currentHumans = currentChannel.members.filter(
+                m => !m.user.bot
         );
 
-        if (humanMembers.size === 0) {
-            setTimeout(() => {
-                const currentChannel = guild.members.me?.voice.channel;
-
-                if (currentChannel?.id === botChannel.id) {
-                    const currentHumans = currentChannel.members.filter(
-                        (m) => !m.user.bot
-                    );
-
-                    if (currentHumans.size === 0) {
-                        distube.stop(guild.id);
-                        console.log(
-                            "Kanał pusty przez 15 sekund — bot wyszedł."
-                        );
-                    }
-                }
-            }, 15000);
-        }
-    }
-});
+            if (currentHumans.size === 0) {
+                distube.voices.leave(guild.id);
+                console.log("Kanał pusty przez 15 sekund — bot wyszedł.");
+            }
+        }, 15000);
+    });
 
 // Logowanie
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
