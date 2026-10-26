@@ -6,7 +6,7 @@ import {
   Events,
 } from "discord.js";
 import { DisTube } from "distube";
-import { SpotifyPlugin } from "@distube/spotify";
+import { SpotifyPlugin } from "@distube/youtube";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,7 +40,7 @@ const client = new Client({
 });
 
 const distube = new DisTube(client, {
-  plugins: [new SpotifyPlugin()],
+  plugins: [new YoutubePlugin()],
 });
 
 const startingGuilds = new Set();
