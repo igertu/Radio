@@ -8,10 +8,10 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@distube/spotify": "^2.0.1",
     "@discordjs/voice": "^0.17.0",
+    "@distube/spotify": "^2.8.2",
     "discord.js": "^14.14.0",
-    "distube": "^4.10.2",
+    "distube": "^6.0.0",
     "dotenv": "^16.4.5"
   }
 }
