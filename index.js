@@ -1,13 +1,20 @@
 import "dotenv/config";
 import express from "express";
+import { spawn } from "node:child_process";
 import {
   Client,
   GatewayIntentBits,
   Events,
 } from "discord.js";
-import { DisTube } from "distube";
-import { SpotifyPlugin } from "@distube/spotify";
-import { YouTubePlugin } from "@distube/youtube";
+import {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  VoiceConnectionStatus,
+  StreamType,
+  entersState,
+} from "@discordjs/voice";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,7 +31,6 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_CHANNEL_ID = "1325124055627599913";
 const MUSIC_URL = "https://www.youtube.com/watch?v=ElZrFjVk_3I";
 const LEAVE_DELAY_MS = 15_000;
-const DIAGNOSTIC_DELAY_MS = 20_000;
 
 if (!TOKEN) {
   console.error("Brak DISCORD_TOKEN w ustawieniach Render!");
@@ -40,15 +46,11 @@ const client = new Client({
   ],
 });
 
-const distube = new DisTube(client, {
-  plugins: [
-    new YouTubePlugin(),
-    new SpotifyPlugin(),
-  ],
-});
-
 const startingGuilds = new Set();
 const leavingTimers = new Map();
+const audioProcesses = new Map();
+const players = new Map();
+const connections = new Map();
 
 function getHumanMembers(channel) {
   return channel.members.filter((member) => !member.user.bot);
@@ -63,6 +65,29 @@ function cancelLeaveTimer(guildId) {
   }
 }
 
+function stopAudio(guildId) {
+  const processes = audioProcesses.get(guildId);
+
+  if (processes) {
+    for (const process of processes) {
+      try {
+        process.kill("SIGTERM");
+      } catch {}
+    }
+
+    audioProcesses.delete(guildId);
+  }
+
+  const player = players.get(guildId);
+
+  if (player) {
+    try {
+      player.stop(true);
+    } catch {}
+    players.delete(guildId);
+  }
+}
+
 function scheduleLeaveIfEmpty(channel) {
   const guildId = channel.guild.id;
 
@@ -73,117 +98,162 @@ function scheduleLeaveIfEmpty(channel) {
 
   if (leavingTimers.has(guildId)) return;
 
+  console.log("Kanał jest pusty. Bot rozłączy się za 15 sekund.");
+
   const timer = setTimeout(() => {
+    leavingTimers.delete(guildId);
+
+    const guild = client.guilds.cache.get(guildId);
+    const botMember = guild?.members.me;
+    const currentChannel = botMember?.voice.channel;
+
+    if (!currentChannel) return;
+    if (currentChannel.id !== TARGET_CHANNEL_ID) return;
+
+    if (getHumanMembers(currentChannel).size > 0) return;
+
+    console.log("Brak ludzi na kanale. Zatrzymuję muzykę i rozłączam bota.");
+
+    stopAudio(guildId);
+
     try {
-      const guild = client.guilds.cache.get(guildId);
-      const botMember = guild?.members.me;
-      const currentChannel = botMember?.voice.channel;
-
-      if (!currentChannel) return;
-      if (getHumanMembers(currentChannel).size > 0) return;
-
-      console.log("Brak ludzi na kanale. Bot się rozłącza.");
-
-      try {
-        distube.voices.get(guildId)?.stop();
-      } catch (error) {
-        console.error("Błąd zatrzymywania muzyki:", error);
-      }
-
-      botMember.voice.disconnect();
+      connections.get(guildId)?.destroy();
     } catch (error) {
-      console.error("Błąd rozłączania bota:", error);
-    } finally {
-      leavingTimers.delete(guildId);
+      console.error("Błąd rozłączania:", error);
     }
+
+    connections.delete(guildId);
   }, LEAVE_DELAY_MS);
 
   leavingTimers.set(guildId, timer);
 }
 
-client.once(Events.ClientReady, (readyClient) => {
-  console.log(`Bot gotowy jako ${readyClient.user.tag}`);
-});
+async function playMusic(voiceChannel, member) {
+  const guild = voiceChannel.guild;
+  const guildId = guild.id;
 
-distube.on("initQueue", (queue) => {
-  console.log(`DisTube utworzył kolejkę na serwerze ${queue.id}`);
-});
+  if (startingGuilds.has(guildId)) return;
+  startingGuilds.add(guildId);
 
-distube.on("playSong", (queue, song) => {
-  console.log(`Odtwarzanie rozpoczęte: ${song.name}`);
-
-  queue.textChannel
-    ?.send(`🎵 Teraz gram: **${song.name}**`)
-    .catch(() => {});
-});
-
-distube.on("addSong", (_queue, song) => {
-  console.log(`Dodano utwór: ${song.name}`);
-});
-
-distube.on("empty", (queue) => {
-  console.log(`Kolejka jest pusta na serwerze ${queue.id}`);
-});
-
-distube.on("error", (error, queue, song) => {
-  console.error("Błąd DisTube:", error?.stack || error);
-
-  queue?.textChannel
-    ?.send(
-      `❌ Błąd odtwarzania${
-        song?.name ? `: ${song.name}` : ""
-      }. Sprawdź logi Render.`
-    )
-    .catch(() => {});
-});
-
-client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
-  const guild = newState.guild;
+  let ytdlp;
+  let ffmpeg;
 
   try {
     const botMember = guild.members.me;
-    if (!botMember) return;
 
-    const currentBotChannel = botMember.voice.channel;
+    const permissions = voiceChannel.permissionsFor(botMember);
 
-    if (currentBotChannel?.id === TARGET_CHANNEL_ID) {
-      scheduleLeaveIfEmpty(currentBotChannel);
-    }
-
-    const member = newState.member;
-
-    if (!member || member.user.bot) return;
-    if (newState.channelId !== TARGET_CHANNEL_ID) return;
-
-    const voiceChannel = newState.channel;
-    if (!voiceChannel) return;
-
-    cancelLeaveTimer(guild.id);
-
-    if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
-      console.log("Bot już jest na kanale docelowym.");
+    if (
+      !permissions?.has("ViewChannel") ||
+      !permissions?.has("Connect") ||
+      !permissions?.has("Speak")
+    ) {
+      console.error("Brak uprawnień View Channel, Connect lub Speak.");
       return;
     }
 
-    if (startingGuilds.has(guild.id)) return;
+    console.log(`Kanał głosowy: ${voiceChannel.name}`);
+    console.log(`Adres utworu: ${MUSIC_URL}`);
+    console.log("Uruchamiam yt-dlp...");
 
-    startingGuilds.add(guild.id);
+    const connection = joinVoiceChannel({
+      channelId: voiceChannel.id,
+      guildId: guild.id,
+      adapterCreator: guild.voiceAdapterCreator,
+      selfDeaf: true,
+    });
 
-    let diagnosticTimer;
+    connections.set(guildId, connection);
 
-    try {
-      const permissions = voiceChannel.permissionsFor(botMember);
+    connection.on("error", (error) => {
+      console.error("Błąd połączenia głosowego:", error);
+    });
 
-      if (
-        !permissions?.has("ViewChannel") ||
-        !permissions?.has("Connect") ||
-        !permissions?.has("Speak")
-      ) {
-        console.error(
-          "Brak uprawnień View Channel, Connect lub Speak."
-        );
-        return;
+    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+
+    if (getHumanMembers(voiceChannel).size === 0) {
+      console.log("Nikt już nie jest na kanale. Nie uruchamiam muzyki.");
+      connection.destroy();
+      connections.delete(guildId);
+      return;
+    }
+
+    const player = createAudioPlayer();
+    players.set(guildId, player);
+    connection.subscribe(player);
+
+    ytdlp = spawn(
+      "yt-dlp",
+      [
+        "--no-playlist",
+        "--no-warnings",
+        "-f",
+        "bestaudio/best",
+        "-o",
+        "-",
+        MUSIC_URL,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+
+    ffmpeg = spawn(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-i",
+        "pipe:0",
+        "-f",
+        "s16le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "pipe:1",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] }
+    );
+
+    audioProcesses.set(guildId, [ytdlp, ffmpeg]);
+
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    ytdlp.stderr.setEncoding("utf8");
+    ytdlp.stderr.on("data", (data) => {
+      console.error("yt-dlp:", data.trim());
+    });
+
+    ffmpeg.stderr.setEncoding("utf8");
+    ffmpeg.stderr.on("data", (data) => {
+      console.log("FFmpeg:", data.trim());
+    });
+
+    ytdlp.on("error", (error) => {
+      console.error("Nie udało się uruchomić yt-dlp:", error);
+    });
+
+    ffmpeg.on("error", (error) => {
+      console.error("Nie udało się uruchomić FFmpeg:", error);
+    });
+
+    ytdlp.on("close", (code) => {
+      console.log(`yt-dlp zakończył działanie. Kod: ${code}`);
+      if (code !== 0 && code !== null) {
+        console.error("yt-dlp nie pobrał strumienia audio.");
       }
+    });
+
+    ffmpeg.on("close", (code) => {
+      console.log(`FFmpeg zakończył działanie. Kod: ${code}`);
+    });
+
+    const resource = createAudioResource(ffmpeg.stdout, {
+      inputType: StreamType.Raw,
+    });
+
+    player.on(AudioPlayerStatus.Playing, () => {
+      console.log("🎵 Odtwarzanie rozpoczęte!");
 
       const textChannel =
         guild.systemChannel ??
@@ -193,39 +263,73 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
             channel.permissionsFor(botMember)?.has("SendMessages")
         );
 
-      console.log(`Kanał głosowy: ${voiceChannel.name}`);
-      console.log(`Adres utworu: ${MUSIC_URL}`);
-      console.log("START: wywołuję distube.play()");
+      textChannel?.send("🎵 Muzyka zaczęła grać!").catch(() => {});
+    });
 
-      diagnosticTimer = setTimeout(() => {
-        console.error(
-          `DIAGNOSTYKA: distube.play() nadal nie zakończyło działania po ${DIAGNOSTIC_DELAY_MS / 1000} sekundach.`
-        );
-        console.error(
-          "Sprawdź, czy pojawił się osobny błąd wtyczki YouTube lub DisTube."
-        );
-      }, DIAGNOSTIC_DELAY_MS);
+    player.on("error", (error) => {
+      console.error("Błąd odtwarzacza audio:", error);
+    });
 
-      await distube.play(voiceChannel, MUSIC_URL, {
-        member,
-        textChannel: textChannel ?? undefined,
-      });
+    player.on(AudioPlayerStatus.Idle, () => {
+      console.log("Odtwarzanie zakończone.");
+    });
 
-      console.log("KONIEC: distube.play() zakończyło działanie");
-    } catch (error) {
-      console.error(
-        "Błąd uruchamiania muzyki:",
-        error?.stack || error
-      );
-    } finally {
-      if (diagnosticTimer) clearTimeout(diagnosticTimer);
-      startingGuilds.delete(guild.id);
+    player.play(resource);
+    console.log(`Żądanie odtwarzania wysłane przez użytkownika ${member.user.tag}.`);
+  } catch (error) {
+    console.error("Błąd uruchamiania muzyki:", error?.stack || error);
+
+    try {
+      ytdlp?.kill("SIGTERM");
+      ffmpeg?.kill("SIGTERM");
+    } catch {}
+
+    connections.get(guild.id)?.destroy();
+    connections.delete(guild.id);
+  } finally {
+    startingGuilds.delete(guildId);
+  }
+}
+
+client.once(Events.ClientReady, (readyClient) => {
+  console.log(`Bot gotowy jako ${readyClient.user.tag}`);
+});
+
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  const guild = newState.guild;
+
+  try {
+    const botMember = guild.members.me;
+    if (!botMember) return;
+
+    const botChannel = botMember.voice.channel;
+
+    if (botChannel?.id === TARGET_CHANNEL_ID) {
+      scheduleLeaveIfEmpty(botChannel);
+    }
+
+    const member = newState.member;
+
+    if (!member || member.user.bot) return;
+
+    if (
+      newState.channelId === TARGET_CHANNEL_ID &&
+      oldState.channelId !== TARGET_CHANNEL_ID
+    ) {
+      const voiceChannel = newState.channel;
+      if (!voiceChannel) return;
+
+      cancelLeaveTimer(guild.id);
+
+      if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
+        console.log("Bot już jest na kanale docelowym.");
+        return;
+      }
+
+      await playMusic(voiceChannel, member);
     }
   } catch (error) {
-    console.error(
-      "Błąd obsługi kanału głosowego:",
-      error?.stack || error
-    );
+    console.error("Błąd obsługi kanału głosowego:", error?.stack || error);
   }
 });
 
