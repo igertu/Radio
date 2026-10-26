@@ -21,15 +21,13 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 const TOKEN = process.env.DISCORD_TOKEN;
-
-// ID kanału głosowego „Ogólny”
 const TARGET_CHANNEL_ID = "1325124055627599913";
 
-// Na razie testujemy pojedynczy utwór z YouTube
+// Testowy utwór z YouTube
 const MUSIC_URL = "https://www.youtube.com/watch?v=ElZrFjVk_3I";
 
-// Jeśli chcesz wrócić do playlisty Spotify, użyj zamiast adresu powyżej:
-// const MUSIC_URL = "https://open.spotify.com/playlist/3DmkMyHBtiSUGdBFeWm3BX?si=1bcc0fb2415b4ce0&pt=96c65f2c032eb1af174a7f500e5a016c";
+// Aby używać playlisty Spotify, zamień MUSIC_URL powyżej
+// na adres swojej playlisty Spotify.
 
 if (!TOKEN) {
   console.error("Brak DISCORD_TOKEN w ustawieniach Render!");
@@ -55,7 +53,7 @@ const distube = new DisTube(client, {
 const startingGuilds = new Set();
 const leavingTimers = new Map();
 
-const LEAVE_DELAY_MS = 15_000; // Wyjdź po 15 sekundach bez ludzi
+const LEAVE_DELAY_MS = 15_000;
 
 function getHumanMembers(channel) {
   return channel.members.filter((member) => !member.user.bot);
@@ -78,7 +76,7 @@ function scheduleLeaveIfEmpty(channel) {
     return;
   }
 
-  cancelLeaveTimer(guildId);
+  if (leavingTimers.has(guildId)) return;
 
   const timer = setTimeout(async () => {
     try {
@@ -88,20 +86,19 @@ function scheduleLeaveIfEmpty(channel) {
 
       if (!botVoiceChannel) return;
 
-      // Sprawdź ponownie, czy na kanale nadal nie ma ludzi
       if (getHumanMembers(botVoiceChannel).size > 0) return;
 
-      console.log("Brak ludzi na kanale. Bot rozłącza się.");
+      console.log("Na kanale nie ma ludzi. Bot się rozłącza.");
 
       try {
         distube.voices.get(guildId)?.stop();
       } catch (error) {
-        console.log("Nie udało się zatrzymać utworu:", error.message);
+        console.error("Błąd zatrzymywania muzyki:", error.message);
       }
 
       botMember.voice.disconnect();
     } catch (error) {
-      console.error("Błąd podczas rozłączania bota:", error);
+      console.error("Błąd rozłączania bota:", error);
     } finally {
       leavingTimers.delete(guildId);
     }
@@ -116,61 +113,63 @@ client.once(Events.ClientReady, (readyClient) => {
 
 distube.on("playSong", (queue, song) => {
   console.log(`Odtwarzam: ${song.name}`);
-  queue.textChannel?.send(`🎵 Teraz gram: **${song.name}**`).catch(() => {});
+
+  queue.textChannel
+    ?.send(`🎵 Teraz gram: **${song.name}**`)
+    .catch(() => {});
 });
 
-distube.on("addSong", (queue, song) => {
+distube.on("addSong", (_queue, song) => {
   console.log(`Dodano utwór: ${song.name}`);
 });
 
 distube.on("error", (error, queue, song) => {
   console.error("Błąd DisTube:", error?.stack || error);
 
-  if (queue?.textChannel) {
-    queue.textChannel
-      .send(`❌ Nie udało się odtworzyć muzyki${song?.name ? `: ${song.name}` : ""}. Sprawdź logi Render.`)
-      .catch(() => {});
-  }
+  queue?.textChannel
+    ?.send(
+      `❌ Nie udało się odtworzyć muzyki${
+        song?.name ? `: ${song.name}` : ""
+      }. Sprawdź logi Render.`
+    )
+    .catch(() => {});
 });
 
-client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
   try {
     const guild = newState.guild;
     const botMember = guild.members.me;
 
     if (!botMember) return;
 
-    // Jeśli bot jest na kanale docelowym i ludzie wychodzą,
-    // sprawdzamy, czy powinien się rozłączyć.
     const botVoiceChannel = botMember.voice.channel;
 
+    // Aktualizuj automatyczne rozłączanie, gdy ktoś wychodzi
     if (botVoiceChannel?.id === TARGET_CHANNEL_ID) {
       scheduleLeaveIfEmpty(botVoiceChannel);
     }
 
     const member = newState.member;
 
-    // Ignoruj samego bota i innych botów
     if (!member || member.user.bot) return;
 
-    // Reaguj tylko na wejście człowieka na kanał docelowy
+    // Uruchamiaj muzykę, gdy człowiek wchodzi na kanał docelowy
     if (newState.channelId !== TARGET_CHANNEL_ID) return;
 
     const voiceChannel = newState.channel;
 
     if (!voiceChannel) return;
 
-    // Ktoś wrócił — anuluj zaplanowane rozłączenie
     cancelLeaveTimer(guild.id);
 
-    // Jeśli bot już jest na kanale, nie uruchamiaj drugiego odtwarzania
+    // Bot jest już na kanale — nie uruchamiaj drugiej kolejki
     if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
       console.log("Bot już jest na kanale docelowym.");
       return;
     }
 
-    // Zapobiegaj kilku próbom jednocześnie
     if (startingGuilds.has(guild.id)) return;
+
     startingGuilds.add(guild.id);
 
     try {
@@ -182,7 +181,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         !permissions?.has("Speak")
       ) {
         console.error(
-          "Bot nie ma uprawnień View Channel, Connect lub Speak na kanale."
+          "Bot nie ma uprawnień View Channel, Connect lub Speak."
         );
         return;
       }
@@ -197,8 +196,26 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
       console.log(`Próba odtwarzania na kanale: ${voiceChannel.name}`);
       console.log(`Adres muzyki: ${MUSIC_URL}`);
+      console.log("Sprawdzam, czy DisTube znajduje utwór...");
 
-      await distube.play(voiceChannel, MUSIC_URL, {
+      const results = await distube.search(MUSIC_URL, {
+        type: "video",
+        limit: 1,
+      });
+
+      console.log(
+        "Wyniki wyszukiwania:",
+        results.map((song) => song.name)
+      );
+
+      if (!results.length) {
+        throw new Error("DisTube nie znalazł żadnego utworu.");
+      }
+
+      console.log(`Znaleziono utwór: ${results[0].name}`);
+      console.log("Przekazuję utwór do odtwarzania...");
+
+      await distube.play(voiceChannel, results[0].url, {
         member,
         textChannel: textChannel ?? undefined,
       });
