@@ -11,7 +11,7 @@
     "@discordjs/voice": "^0.17.0",
     "@distube/spotify": "^2.0.1",
     "discord.js": "^14.14.0",
-    "distube": "^4.10.2",
+    "distube": "^latest",
     "dotenv": "^16.4.5"
   }
 }
