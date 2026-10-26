@@ -1,4 +1,20 @@
 ```js
+
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
+for (const pkg of ["discord.js", "distube", "@discordjs/voice"]) {
+    try {
+        console.log(
+            `WERSJA ${pkg}:`,
+            require(`${pkg}/package.json`).version
+        );
+    } catch (error) {
+        console.log(`Nie udało się odczytać wersji ${pkg}:`, error.message);
+    }
+}
+
 import "dotenv/config";
 import { createServer } from "node:http";
 import { Client, GatewayIntentBits } from "discord.js";
