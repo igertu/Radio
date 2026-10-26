@@ -23,11 +23,8 @@ app.listen(PORT, "0.0.0.0", () => {
 const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_CHANNEL_ID = "1325124055627599913";
 
-// Testowy utwór z YouTube
+// Testujemy pojedynczy utwór z YouTube
 const MUSIC_URL = "https://www.youtube.com/watch?v=ElZrFjVk_3I";
-
-// Aby używać playlisty Spotify, zamień MUSIC_URL powyżej
-// na adres swojej playlisty Spotify.
 
 if (!TOKEN) {
   console.error("Brak DISCORD_TOKEN w ustawieniach Render!");
@@ -52,7 +49,6 @@ const distube = new DisTube(client, {
 
 const startingGuilds = new Set();
 const leavingTimers = new Map();
-
 const LEAVE_DELAY_MS = 15_000;
 
 function getHumanMembers(channel) {
@@ -88,12 +84,12 @@ function scheduleLeaveIfEmpty(channel) {
 
       if (getHumanMembers(botVoiceChannel).size > 0) return;
 
-      console.log("Na kanale nie ma ludzi. Bot się rozłącza.");
+      console.log("Brak ludzi na kanale. Bot się rozłącza.");
 
       try {
         distube.voices.get(guildId)?.stop();
       } catch (error) {
-        console.error("Błąd zatrzymywania muzyki:", error.message);
+        console.error("Błąd zatrzymywania muzyki:", error);
       }
 
       botMember.voice.disconnect();
@@ -142,9 +138,9 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
     if (!botMember) return;
 
+    // Sprawdź, czy bot powinien opuścić pusty kanał
     const botVoiceChannel = botMember.voice.channel;
 
-    // Aktualizuj automatyczne rozłączanie, gdy ktoś wychodzi
     if (botVoiceChannel?.id === TARGET_CHANNEL_ID) {
       scheduleLeaveIfEmpty(botVoiceChannel);
     }
@@ -152,8 +148,6 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
     const member = newState.member;
 
     if (!member || member.user.bot) return;
-
-    // Uruchamiaj muzykę, gdy człowiek wchodzi na kanał docelowy
     if (newState.channelId !== TARGET_CHANNEL_ID) return;
 
     const voiceChannel = newState.channel;
@@ -162,7 +156,7 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
     cancelLeaveTimer(guild.id);
 
-    // Bot jest już na kanale — nie uruchamiaj drugiej kolejki
+    // Jeśli bot już jest na kanale, nie twórz drugiej kolejki
     if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
       console.log("Bot już jest na kanale docelowym.");
       return;
@@ -196,26 +190,9 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
       console.log(`Próba odtwarzania na kanale: ${voiceChannel.name}`);
       console.log(`Adres muzyki: ${MUSIC_URL}`);
-      console.log("Sprawdzam, czy DisTube znajduje utwór...");
+      console.log("Przekazuję adres bezpośrednio do DisTube...");
 
-      const results = await distube.search(MUSIC_URL, {
-        type: "video",
-        limit: 1,
-      });
-
-      console.log(
-        "Wyniki wyszukiwania:",
-        results.map((song) => song.name)
-      );
-
-      if (!results.length) {
-        throw new Error("DisTube nie znalazł żadnego utworu.");
-      }
-
-      console.log(`Znaleziono utwór: ${results[0].name}`);
-      console.log("Przekazuję utwór do odtwarzania...");
-
-      await distube.play(voiceChannel, results[0].url, {
+      await distube.play(voiceChannel, MUSIC_URL, {
         member,
         textChannel: textChannel ?? undefined,
       });
