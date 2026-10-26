@@ -94,26 +94,26 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     }
 
     // Nie ustawiaj wielu timerów dla tego samego serwera
-    if (leaveTimers.has(guild.id)) return;
+    //if (leaveTimers.has(guild.id)) return;
 
-    const timer = setTimeout(() => {
-        leaveTimers.delete(guild.id);
+    //const timer = setTimeout(() => {
+        //leaveTimers.delete(guild.id);
 
-        const currentChannel = guild.members.me?.voice.channel;
-        if (!currentChannel || currentChannel.id !== botChannel.id) return;
+        //const currentChannel = guild.members.me?.voice.channel;
+        //if (!currentChannel || currentChannel.id !== botChannel.id) return;
 
-        const currentHumans = currentChannel.members.filter(
-            m => !m.user.bot
-        );
+        //const currentHumans = currentChannel.members.filter(
+            //m => !m.user.bot
+       // );
 
-        if (currentHumans.size === 0) {
-            distube.voices.leave(guild.id);
-            console.log("Kanał pusty przez 15 sekund — bot wyszedł.");
-        }
-    }, 15000);
+        //if (currentHumans.size === 0) {
+          //  distube.voices.leave(guild.id);
+         //   console.log("Kanał pusty przez 15 sekund — bot wyszedł.");
+       // }
+  //  }, 15000);
 
-    leaveTimers.set(guild.id, timer);
-});
+ //   leaveTimers.set(guild.id, timer);
+//});
 
 client.login(process.env.DISCORD_TOKEN).catch(error => {
     console.error("Nie udało się zalogować bota Discord:", error);
