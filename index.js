@@ -22,9 +22,8 @@ app.listen(PORT, "0.0.0.0", () => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const TARGET_CHANNEL_ID = "1325124055627599913";
-
-// Testujemy pojedynczy utwór z YouTube
 const MUSIC_URL = "https://www.youtube.com/watch?v=ElZrFjVk_3I";
+const LEAVE_DELAY_MS = 15_000;
 
 if (!TOKEN) {
   console.error("Brak DISCORD_TOKEN w ustawieniach Render!");
@@ -49,7 +48,6 @@ const distube = new DisTube(client, {
 
 const startingGuilds = new Set();
 const leavingTimers = new Map();
-const LEAVE_DELAY_MS = 15_000;
 
 function getHumanMembers(channel) {
   return channel.members.filter((member) => !member.user.bot);
@@ -138,7 +136,6 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
     if (!botMember) return;
 
-    // Sprawdź, czy bot powinien opuścić pusty kanał
     const botVoiceChannel = botMember.voice.channel;
 
     if (botVoiceChannel?.id === TARGET_CHANNEL_ID) {
@@ -156,7 +153,6 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
     cancelLeaveTimer(guild.id);
 
-    // Jeśli bot już jest na kanale, nie twórz drugiej kolejki
     if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
       console.log("Bot już jest na kanale docelowym.");
       return;
@@ -190,14 +186,14 @@ client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
 
       console.log(`Próba odtwarzania na kanale: ${voiceChannel.name}`);
       console.log(`Adres muzyki: ${MUSIC_URL}`);
-      console.log("Przekazuję adres bezpośrednio do DisTube...");
+      console.log("START: wywołuję distube.play()");
 
       await distube.play(voiceChannel, MUSIC_URL, {
         member,
         textChannel: textChannel ?? undefined,
       });
 
-      console.log("Polecenie odtwarzania wysłane do DisTube.");
+      console.log("KONIEC: distube.play() zakończyło działanie");
     } catch (error) {
       console.error(
         "Nie udało się rozpocząć odtwarzania:",
