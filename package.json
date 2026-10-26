@@ -1,9 +1,9 @@
+```json
 {
   "name": "discord-music-bot",
   "version": "1.0.0",
-  "description": "Bot muzyczny",
-  "main": "index.js",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
@@ -11,7 +11,8 @@
     "@discordjs/voice": "^0.17.0",
     "@distube/spotify": "^2.0.1",
     "discord.js": "^14.14.0",
-    "distube": "latest",
+    "distube": "5.0.7",
     "dotenv": "^16.4.5"
   }
 }
+```
