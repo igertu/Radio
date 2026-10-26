@@ -28,7 +28,7 @@ if (!TOKEN) {
 
 const TARGET_CHANNEL_ID = "1325124055627599913";
 
-const PLAYLIST_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+const PLAYLIST_URL = "https://www.youtube.com/watch?v=ElZrFjVk_3I";
 
 const client = new Client({
   intents: [
