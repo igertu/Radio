@@ -28,8 +28,7 @@ if (!TOKEN) {
 
 const TARGET_CHANNEL_ID = "1325124055627599913";
 
-const PLAYLIST_URL =
-  "https://open.spotify.com/playlist/3DmkMyHBtiSUGdBFeWm3BX?si=1bcc0fb2415b4ce0&pt=96c65f2c032eb1af174a7f500e5a016c";
+const PLAYLIST_URL = "https://open.spotify.com/playlist/3DmkMyHBtiSUGdBFeWm3BX?si=1bcc0fb2415b4ce0&pt=96c65f2c032eb1af174a7f500e5a016c";
 
 const client = new Client({
   intents: [
