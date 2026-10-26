@@ -1,4 +1,3 @@
-```js
 import "dotenv/config";
 import express from "express";
 import {
@@ -146,4 +145,3 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 client.login(TOKEN).catch((error) => {
   console.error("Nie udało się zalogować bota:", error);
 });
-```
