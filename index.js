@@ -89,11 +89,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
                     if (currentHumans.size === 0) {
                         distube.stop(guild.id);
                         console.log(
-                            "Kanał pusty przez 10 sekund — bot wyszedł."
+                            "Kanał pusty przez 15 sekund — bot wyszedł."
                         );
                     }
                 }
-            }, 10000);
+            }, 15000);
         }
     }
 });
