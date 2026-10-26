@@ -15,7 +15,6 @@ const client = new Client({
 // Konfiguracja odtwarzacza DisTube
 const distube = new DisTube(client, {
     emitNewSongOnly: true,
-    leaveOnStop: false,
     plugins: [new SpotifyPlugin()]
 });
 
