@@ -19,7 +19,7 @@ const distube = new DisTube(client, {
     plugins: [new SpotifyPlugin()]
 });
 
-// --- TUTAJ WPISUJE SWOJE DANE ---
+// --- TUTAJ WPISUJESZ SWOJE DANE ---
 const TARGET_VOICE_CHANNEL_ID = "WPISZ_TUTAJ_ID_KANALU_GLOWNEGO";
 const PLAYLIST_URL = "WPISZ_TUTAJ_LINK_DO_PLAYLISTY_SPOTIFY";
 // ---------------------------------
@@ -28,15 +28,17 @@ client.once("ready", () => {
     console.log(`Bot muzyczny gotowy jako ${client.user.tag}`);
 });
 
-// Nasłuchiwanie wejść na kanał głosowy
+// Nasłuchiwanie wejść i wyjść z kanałów głosowych
 client.on("voiceStateUpdate", async (oldState, newState) => {
-    // Sprawdzamy czy użytkownik wszedł na docelowy kanał główny
+    const guild = newState.guild;
+    const member = newState.member;
+    const botMember = guild.members.me;
+
+    // 1. SPRAWDZANIE WEJŚCIA NA KANAŁ GŁÓWNY
     if (newState.channelId === TARGET_VOICE_CHANNEL_ID && oldState.channelId !== TARGET_VOICE_CHANNEL_ID) {
-        const member = newState.member;
-        if (member.user.bot) return; // Ignorujemy inne boty
+        if (member && member.user.bot) return; // Ignorujemy inne boty
 
         const voiceChannel = newState.channel;
-        const guild = newState.guild;
 
         try {
             const queue = distube.getQueue(guild.id);
@@ -52,7 +54,30 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
             console.error("Błąd podczas odtwarzania muzyki:", error);
         }
     }
+
+    // 2. SPRAWDZANIE CZY NIKOGO NIE MA NA KANALE BOTA
+    if (botMember && botMember.voice.channel) {
+        const botChannel = botMember.voice.channel;
+        
+        // Liczymy użytkowników na kanale bota (odliczając samego bota)
+        const humanMembers = botChannel.members.filter(m => !m.user.bot);
+
+        // Jeśli na kanale nie ma żadnego użytkownika (zostali sami boty lub pustka)
+        if (humanMembers.size === 0) {
+            setTimeout(() => {
+                // Sprawdzamy jeszcze raz po 10 sekundach, czy na pewno nikogo nie ma
+                const currentChannel = guild.members.me.voice.channel;
+                if (currentChannel && currentChannel.id === botChannel.id) {
+                    const checkHumans = currentChannel.members.filter(m => !m.user.bot);
+                    if (checkHumans.size === 0) {
+                        distube.stop(guild.id); // Zatrzymuje muzykę i wychodzi z kanału
+                        console.log("Nikogo nie było na kanale przez 10 sekund – bot wyszedł.");
+                    }
+                }
+            }, 10000); // 10 sekund opóźnienia, żeby bot nie wychodził przy chwilowej zmianie kanału
+        }
+    }
 });
 
-// Logowanie bota przy użyciu zmiennej środowiskowej z Rendera
+// Logowanie bota
 client.login(process.env.DISCORD_TOKEN);
