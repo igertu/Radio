@@ -22,7 +22,7 @@ app.listen(PORT, "0.0.0.0", () => {
 const TOKEN = process.env.DISCORD_TOKEN;
 
 if (!TOKEN) {
-  console.error("Brak DISCORD_TOKEN w zmiennych środowiskowych Render!");
+  console.error("Brak DISCORD_TOKEN w ustawieniach Render!");
   process.exit(1);
 }
 
@@ -44,104 +44,85 @@ const distube = new DisTube(client, {
   plugins: [new SpotifyPlugin()],
 });
 
-const leaveTimers = new Map();
 const startingGuilds = new Set();
 
 client.once(Events.ClientReady, (readyClient) => {
-  console.log(`Bot muzyczny gotowy jako ${readyClient.user.tag}`);
+  console.log(`Bot gotowy jako ${readyClient.user.tag}`);
 });
 
-distube.on("error", (error, queue) => {
+distube.on("error", (error) => {
   console.error("Błąd DisTube:", error.message);
 });
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   try {
-    const member = newState.member ?? oldState.member;
+    const member = newState.member;
 
     if (!member || member.user.bot) return;
 
+    // Reaguj tylko na wejście człowieka na wybrany kanał
+    if (newState.channelId !== TARGET_CHANNEL_ID) return;
+
     const guild = newState.guild;
-    const botVoiceChannel = guild.members.me?.voice.channel;
+    const botMember = guild.members.me;
 
-    // Ktoś wszedł na docelowy kanał głosowy
-    if (
-      newState.channelId === TARGET_CHANNEL_ID &&
-      !botVoiceChannel &&
-      !startingGuilds.has(guild.id)
-    ) {
-      startingGuilds.add(guild.id);
+    if (!botMember) return;
 
-      try {
-        const voiceChannel = newState.channel;
-
-        if (!voiceChannel) return;
-
-        const textChannel =
-          guild.systemChannel ??
-          guild.channels.cache.find(
-            (channel) =>
-              channel.isTextBased() &&
-              channel.permissionsFor(guild.members.me)?.has("SendMessages")
-          );
-
-        console.log(`Próba dołączenia do kanału: ${voiceChannel.name}`);
-
-        await distube.play(voiceChannel, PLAYLIST_URL, {
-          member,
-          textChannel: textChannel ?? undefined,
-        });
-
-        console.log("Uruchomiono próbę odtwarzania playlisty.");
-      } catch (error) {
-        console.error("Błąd dołączania lub odtwarzania:", error);
-      } finally {
-        startingGuilds.delete(guild.id);
-      }
+    // Jeśli bot już jest na kanale, nie uruchamiaj kolejnego odtwarzania
+    if (botMember.voice.channelId === TARGET_CHANNEL_ID) {
+      console.log("Bot już znajduje się na docelowym kanale.");
+      return;
     }
 
-    // Jeśli ktoś wrócił, anuluj timer opuszczania
-    if (newState.channelId === TARGET_CHANNEL_ID) {
-      const timer = leaveTimers.get(guild.id);
+    // Nie uruchamiaj kilku prób jednocześnie
+    if (startingGuilds.has(guild.id)) return;
 
-      if (timer) {
-        clearTimeout(timer);
-        leaveTimers.delete(guild.id);
+    startingGuilds.add(guild.id);
+
+    try {
+      const voiceChannel = newState.channel;
+
+      if (!voiceChannel) return;
+
+      const permissions = voiceChannel.permissionsFor(botMember);
+
+      if (
+        !permissions?.has("ViewChannel") ||
+        !permissions?.has("Connect") ||
+        !permissions?.has("Speak")
+      ) {
+        console.error(
+          "Bot nie ma uprawnień View Channel, Connect lub Speak na kanale."
+        );
+        return;
       }
-    }
 
-    // Sprawdź, czy na kanale bota nie ma już ludzi
-    const currentBotChannel = guild.members.me?.voice.channel;
+      const textChannel =
+        guild.systemChannel ??
+        guild.channels.cache.find(
+          (channel) =>
+            channel.isTextBased() &&
+            channel.permissionsFor(botMember)?.has("SendMessages")
+        );
 
-    if (!currentBotChannel) return;
+      console.log(`Bot próbuje wejść na: ${voiceChannel.name}`);
 
-    const humans = currentBotChannel.members.filter(
-      (voiceMember) => !voiceMember.user.bot
-    );
+      await distube.play(voiceChannel, PLAYLIST_URL, {
+        member,
+        textChannel: textChannel ?? undefined,
+      });
 
-    if (humans.size === 0 && !leaveTimers.has(guild.id)) {
-      const timer = setTimeout(() => {
-        const channel = guild.members.me?.voice.channel;
-
-        if (
-          channel &&
-          channel.members.filter((voiceMember) => !voiceMember.user.bot)
-            .size === 0
-        ) {
-          distube.voices.leave(guild.id);
-          console.log("Bot opuścił pusty kanał głosowy.");
-        }
-
-        leaveTimers.delete(guild.id);
-      }, 15000);
-
-      leaveTimers.set(guild.id, timer);
+      console.log("Polecenie odtwarzania playlisty zostało wysłane.");
+    } catch (error) {
+      console.error("Nie udało się dołączyć lub odtwarzać:", error);
+    } finally {
+      startingGuilds.delete(guild.id);
     }
   } catch (error) {
-    console.error("Błąd VoiceStateUpdate:", error);
+    console.error("Błąd obsługi kanału głosowego:", error);
   }
 });
 
 client.login(TOKEN).catch((error) => {
-  console.error("Nie udało się zalogować bota:", error);
+  console.error("Błąd logowania Discord:", error);
 });
