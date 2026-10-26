@@ -21,7 +21,7 @@ const distube = new DisTube(client, {
 
 // --- TUTAJ WPISUJESZ SWOJE DANE ---
 const TARGET_VOICE_CHANNEL_ID = "WPISZ_TUTAJ_ID_KANALU_GLOWNEGO";
-const PLAYLIST_URL = "WPISZ_TUTAJ_LINK_DO_PLAYLISTY_SPOTIFY";
+const PLAYLIST_URL = "https://open.spotify.com/playlist/3DmkMyHBtiSUGdBFeWm3BX?si=1bcc0fb2415b4ce0&pt=96c65f2c032eb1af174a7f500e5a016c";
 // ---------------------------------
 
 client.once("ready", () => {
