@@ -4,7 +4,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "npm install -g yt-dlp"
   },
   "dependencies": {
     "@discordjs/opus": "^0.4.0",
