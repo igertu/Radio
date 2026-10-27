@@ -1,4 +1,6 @@
 import "dotenv/config";
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
 import express from "express";
 import { spawn } from "node:child_process";
 import {
@@ -179,14 +181,10 @@ async function playMusic(voiceChannel, member) {
     connection.subscribe(player);
 
     ytdlp = spawn("yt-dlp", [
-      "--no-playlist",
-      "--no-warnings",
-      "-f",
-      "bestaudio/best",
-      "-o",
-      "-",
-      MUSIC_URL,
-    ]);
+      ytdlp.on("error", (err) => {
+        console.error("Błąd yt-dlp:", err);
+      });
+
 
     ffmpeg = spawn("ffmpeg", [
       "-hide_banner",
@@ -233,6 +231,11 @@ async function playMusic(voiceChannel, member) {
         inputType: StreamType.Raw,
       }
     );
+
+    if (!ffmpeg.stdout) {
+      console.error("Brak strumienia audio.");
+      return;
+    }
 
     player.play(resource);
 
